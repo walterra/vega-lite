@@ -1,10 +1,10 @@
 import {isObject, NewSignal, OnEvent, SignalValue, Stream} from 'vega';
 import {array, stringValue} from 'vega-util';
 import {SelectionCompiler, SelectionComponent, STORE, TUPLE, unitName} from '.';
-import {LATITUDE, LONGITUDE, ScaleChannel, X, Y} from '../../channel';
+import {GeoPositionChannel, LATITUDE, LONGITUDE, ScaleChannel, X, Y} from '../../channel';
 import {warn} from '../../log';
 import {hasContinuousDomain} from '../../scale';
-import {BrushConfig, SelectionInitInterval, SELECTION_ID} from '../../selection';
+import {BrushConfig, IntervalSelectionConfig, SelectionInitInterval, SELECTION_ID} from '../../selection';
 import {duplicate, keys, vals} from '../../util';
 import {UnitModel} from '../unit';
 import {assembleInit} from './assemble';
@@ -25,7 +25,7 @@ const interval: SelectionCompiler<'interval'> = {
   parse: (model, selCmpt, selDef) => {
     const type = model.hasProjection ? 'id' : 'scaled';
     const cfg = duplicate(model.config.selection.interval);
-    const def = {...cfg, ...(isObject(selDef.select) ? selDef.select : {})};
+    const def = {...(isObject(selDef.select) ? selDef.select : ({} as IntervalSelectionConfig))};
 
     selCmpt.interval = {
       type,
@@ -35,11 +35,9 @@ const interval: SelectionCompiler<'interval'> = {
     if (type === 'id') {
       def.fields = [SELECTION_ID];
 
-      if (model.hasProjection) {
-        const x = def.encodings.indexOf('x');
-        const y = def.encodings.indexOf('y');
-        if (x >= 0) def.encodings[x] = LONGITUDE;
-        if (y >= 0) def.encodings[y] = LATITUDE;
+      // Remap default x/y projection
+      if (model.hasProjection && !def.encodings) {
+        def.encodings = selDef.value ? (keys(selDef.value) as GeoPositionChannel[]) : [LONGITUDE, LATITUDE];
       }
 
       selDef.select = {type: 'interval', ...def};
