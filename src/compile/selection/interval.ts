@@ -13,6 +13,7 @@ import scales from './scales';
 
 export const BRUSH = '_brush';
 export const SCALE_TRIGGER = '_scale_trigger';
+const INIT = '_init';
 
 export interface IntervalSelectionComponent {
   type: 'id' | 'scaled';
@@ -66,7 +67,7 @@ const interval: SelectionCompiler<'interval'> = {
     const init = selCmpt.init ? selCmpt.init[0] : null;
 
     signals.push(
-      ...channels.reduce((arr, proj, i) => arr.concat(channelSignals(model, selCmpt, proj, init && init[i])), [])
+      ...channels.reduce((arr, proj) => arr.concat(channelSignals(model, selCmpt, proj, init && init[proj.index])), [])
     );
 
     if (selCmpt.interval.type === 'scaled') {
@@ -115,9 +116,12 @@ const interval: SelectionCompiler<'interval'> = {
         ]
       });
     } else {
+      const projection = stringValue(model.projectionName());
       const {x, y} = selCmpt.project.hasChannel;
       const xvname = x && x.signals.visual;
       const yvname = y && y.signals.visual;
+      const xinit = init && init[x.index];
+      const yinit = init && init[y.index];
       const bbox =
         `[` +
         `[${xvname ? xvname + '[0]' : '0'}, ${yvname ? yvname + '[0]' : '0'}],` +
@@ -127,10 +131,19 @@ const interval: SelectionCompiler<'interval'> = {
       const intersect = `intersect(${bbox}, {markname: ${stringValue(model.getName('marks'))}}, unit.mark)`;
       const base = `{unit: ${unitName(model)}, fields: [${name + TUPLE_FIELDS}[${selCmpt.project.selectionIdIdx}]]}`;
 
-      return signals.concat({
-        name: tupleSg,
-        update: `vlSelectionTuples(${intersect}, ${base})`
-      });
+      return [
+        {
+          name: name + INIT,
+          init: init
+            ? `[scale(${projection}, [${xinit[0]}, ${yinit[0]}]), scale(${projection}, [${xinit[1]}, ${yinit[1]}])]`
+            : null
+        },
+        ...signals,
+        {
+          name: tupleSg,
+          update: `vlSelectionTuples(${intersect}, ${base})`
+        }
+      ];
     }
   },
 
@@ -232,7 +245,6 @@ function channelSignals(
 
   const scaleName = stringValue(scaledInterval ? model.scaleName(channel) : model.projectionName());
   const scaled = (str: string) => `scale(${scaleName}, ${str})`;
-  const vinit: SignalValue = init ? {init: assembleInit(init, true, scaled)} : {value: []};
 
   const size = model.getSizeSignalRef(channel === X ? 'width' : 'height').signal;
   const coord = `${channel}(unit)`;
@@ -249,6 +261,7 @@ function channelSignals(
     const hasScales = scales.defined(selCmpt);
     const scale = model.getScaleComponent(channel as ScaleChannel);
     const scaleType = scale ? scale.get('type') : undefined;
+    const vinit: SignalValue = init ? {init: assembleInit(init, true, scaled)} : {value: []};
 
     // React to pan/zooms of continuous scales. Non-continuous scales
     // (band, point) cannot be pan/zoomed and any other changes
@@ -274,6 +287,9 @@ function channelSignals(
           }
         ];
   } else {
+    const initIdx = channel === X ? 0 : 1;
+    const initSg = selCmpt.name + INIT;
+    const vinit: SignalValue = init ? {init: `[${initSg}[0][${initIdx}], ${initSg}[1][${initIdx}]]`} : {value: []};
     return [{name: vname, ...vinit, on: von}];
   }
 }
